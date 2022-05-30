@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 //
+#include <hardware/clocks.h>
 #include "hardware/adc.h"
 #include "hardware/rtc.h"
 #include "pico/stdlib.h"
@@ -18,6 +19,7 @@
 #include "my_debug.h"
 #include "rtc.h"
 #include "sd_card.h"
+//#include "sd_spi.h"
 
 extern "C" {
     int lliot(size_t pnum);
@@ -106,6 +108,39 @@ static void run_lliot() {
         pnum = strtoul(arg1, NULL, 0);
     }
     lliot(pnum);
+}
+static bool do_set_sys_clock_khz(uint32_t khz)
+{
+	if (!set_sys_clock_khz(khz, false))
+	{
+		printf("WARNING: unable to set %dkHz\n", (int)khz);
+		return false;
+	} else 
+	{
+		/* The clock has changed. USB doesn't care, but UART needs to reinitialize */
+		stdio_init_all();
+		printf("Set clock to %d.%03d MHz\n", (int)(khz / 1000), (int)(khz % 1000)); 
+		return true;
+	}
+}
+
+static void run_cpu_speed() {
+    size_t pnum = 0;
+    char *arg1 = strtok(NULL, " ");
+    if (arg1) {
+        pnum = strtoul(arg1, NULL, 0);
+    }
+    do_set_sys_clock_khz(pnum);
+}
+static void run_spi_speed() {
+    size_t pnum = 0;
+    char *arg1 = strtok(NULL, " ");
+    if (arg1) {
+        pnum = strtoul(arg1, NULL, 0);
+    }
+    sd_card_t *sd = sd_get_by_num(0);
+    uint32_t actual = spi_set_baudrate(sd->spi->hw_inst, pnum);
+    printf("Attempt to set %d Hz. Actually set %d Hz.\n", (int)pnum, (int)actual);
 }
 static void run_date() {
     char buf[128] = {0};
@@ -423,6 +458,12 @@ static cmd_def_t cmds[] = {
     {"stop_logger", run_stop_logger,
      "stop_logger:\n"
      "  Stop Data Log Demo"},
+    {"cpu", run_cpu_speed,
+     "cpu:\n"
+     "  Set cpu speed"},
+    {"spi", run_spi_speed,
+     "spi:\n"
+     "  Set spi speed"},
     {"help", run_help,
      "help:\n"
      "  Shows this command help."}};
@@ -512,6 +553,7 @@ static void card_detect_callback(uint gpio, uint32_t events) {
 
 int main() {
     stdio_init_all();
+	//do_set_sys_clock_khz(276*1000);
     time_init();
     adc_init();
     // sd_init_driver(); // now called from sd_init_card
